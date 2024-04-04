@@ -61,8 +61,25 @@ function Get-TeamId {
         return $null
     }
 }
+
 function IsTeamsRunning {
     return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
+}
+
+function Get-TeamsStatus{
+    param(
+        [string]$accessToken,
+        [string]$userId
+    )
+
+    $apiUrl = "https://graph.microsoft.com/v1.0/me/presence"
+    $headers = @{
+        Authorization   = "Bearer $accessToken"
+        "MS-APP-ACTS-AS" = $userId
+    }
+
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    return $response.availability
 }
 function ClockIn {
     param (
@@ -118,6 +135,40 @@ function ClockOut {
     else {
         Write-Host "Clock Out cancelled."
     }
+}
+
+function StartBreak {
+    param (
+        [string]$teamId,
+        [string]$timeCardId,
+        [string]$accessToken,
+        [string]$userId
+    )
+
+    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/startBreak"
+    $headers = @{
+        Authorization    = "Bearer $accessToken"
+        "MS-APP-ACTS-AS" = $userId
+    }
+
+    Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
+}
+
+function EndBreak{
+    param (
+        [string]$teamId,
+        [string]$timeCardId,
+        [string]$accessToken,
+        [string]$userId
+    )
+
+    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/endBreak"
+    $headers = @{
+        Authorization    = "Bearer $accessToken"
+        "MS-APP-ACTS-AS" = $userId
+    }
+
+    Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
 }
 
 # Load necessary assemblies
@@ -214,15 +265,29 @@ $teamId = "c5522a2d-bccf-4d2b-950c-252a06cf632f"
 
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
+$onBreak = $false
 $timeCardId = $null
 
 # Main loop to monitor Teams state
 while ($true) {
+    $userStatus = Get-TeamsStatus
     if (IsTeamsRunning) {
         if (-not $clockedIn) {
             # Attempt to clock in
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
             $clockedIn = $true
+        }
+        
+        if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
+            # Start break if user is Away or BeRightBack and not already on a break
+            if (-not $onBreak) {
+                StartBreak -teamId $teamId -accessToken $accessToken -userId $userId
+                $onBreak = $true
+            }
+        } elseif ($userStatus -ne "Offline" -and $onBreak) {
+            # End break if user is not Offline and currently on a break
+            EndBreak -teamId $teamId -accessToken $accessToken -userId $userId
+            $onBreak = $false
         }
     } else {
         if ($clockedIn) {
