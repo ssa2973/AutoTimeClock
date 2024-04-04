@@ -61,7 +61,9 @@ function Get-TeamId {
         return $null
     }
 }
-
+function IsTeamsRunning {
+    return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
+}
 function ClockIn {
     param (
         [string]$teamId,
@@ -210,12 +212,24 @@ $userId = "e7ac535a-2bc3-47ad-a9d5-35ac2c93fb04"
 # $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 $teamId = "c5522a2d-bccf-4d2b-950c-252a06cf632f"
 
-# Clock in on startup
-$timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
+# Variables to track clock-in and clock-out state
+$clockedIn = $false
+$timeCardId = $null
 
-ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-# Register the script to run on shutdown
-# Register-ObjectEvent -InputObject ([wmi]"\\.\root\cimv2:Win32_OperatingSystem") -EventName "Win32ShutdownComplete" -Action {
-#     # Clock out on shutdown
-#     ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-# }
+# Main loop to monitor Teams state
+while ($true) {
+    if (IsTeamsRunning) {
+        if (-not $clockedIn) {
+            # Attempt to clock in
+            $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
+            $clockedIn = $true
+        }
+    } else {
+        if ($clockedIn) {
+            # Attempt to clock out
+            ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+            $clockedIn = $false
+        }
+    }
+    Start-Sleep -Seconds 60 # Check every minute
+}
