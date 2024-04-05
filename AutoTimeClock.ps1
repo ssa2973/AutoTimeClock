@@ -45,10 +45,9 @@ function Get-TeamId {
         [string]$userId
     )
 
-    $apiUrl = "https://graph.microsoft.com/v1.0/me/joinedTeams"
+    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/joinedTeams"
     $headers = @{
         Authorization    = "Bearer $accessToken"
-        "MS-APP-ACTS-AS" = $userId
     }
 
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
@@ -72,10 +71,9 @@ function Get-TeamsStatus{
         [string]$userId
     )
 
-    $apiUrl = "https://graph.microsoft.com/v1.0/me/presence"
+    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/presence"
     $headers = @{
         Authorization   = "Bearer $accessToken"
-        "MS-APP-ACTS-AS" = $userId
     }
 
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
@@ -256,12 +254,11 @@ $clientSecret = $config.clientSecret
 $tenantId = $config.tenantId
 
 # Get access token
+$accessTokenExpiration = (Get-Date).AddSeconds(3599)
 $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
 
-# $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
-$userId = "e7ac535a-2bc3-47ad-a9d5-35ac2c93fb04"
-# $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
-$teamId = "c5522a2d-bccf-4d2b-950c-252a06cf632f"
+$userId = Get-UserIdByEmail -accessToken $accessToken -email $email
+$teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
@@ -270,23 +267,30 @@ $timeCardId = $null
 
 # Main loop to monitor Teams state
 while ($true) {
-    $userStatus = Get-TeamsStatus
+    if((Get-Date) -ge $accessTokenExpiration)
+    {
+        $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+        $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+    }
+    $userStatus = Get-TeamsStatus -accessToken $accessToken -userId $userId
     if (IsTeamsRunning) {
         if (-not $clockedIn) {
             # Attempt to clock in
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
-            $clockedIn = $true
+            if ($null -ne $timeCardId) {
+                $clockedIn = $true
+            }
         }
         
         if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
             # Start break if user is Away or BeRightBack and not already on a break
             if (-not $onBreak) {
-                StartBreak -teamId $teamId -accessToken $accessToken -userId $userId
+                StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
             }
         } elseif ($userStatus -ne "Offline" -and $onBreak) {
             # End break if user is not Offline and currently on a break
-            EndBreak -teamId $teamId -accessToken $accessToken -userId $userId
+            EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $onBreak = $false
         }
     } else {
