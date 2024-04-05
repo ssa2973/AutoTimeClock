@@ -284,11 +284,11 @@ while ($true) {
         
         if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
             # Start break if user is Away or BeRightBack and not already on a break
-            if (-not $onBreak) {
+            if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
             }
-        } elseif ($userStatus -ne "Offline" -and $onBreak) {
+        } elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
             # End break if user is not Offline and currently on a break
             EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $onBreak = $false
