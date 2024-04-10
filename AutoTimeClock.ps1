@@ -47,7 +47,7 @@ function Get-TeamId {
 
     $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/joinedTeams"
     $headers = @{
-        Authorization    = "Bearer $accessToken"
+        Authorization = "Bearer $accessToken"
     }
 
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
@@ -65,7 +65,7 @@ function IsTeamsRunning {
     return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
 }
 
-function Get-TeamsStatus{
+function Get-TeamsStatus {
     param(
         [string]$accessToken,
         [string]$userId
@@ -73,7 +73,7 @@ function Get-TeamsStatus{
 
     $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/presence"
     $headers = @{
-        Authorization   = "Bearer $accessToken"
+        Authorization = "Bearer $accessToken"
     }
 
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
@@ -152,7 +152,7 @@ function StartBreak {
     Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
 }
 
-function EndBreak{
+function EndBreak {
     param (
         [string]$teamId,
         [string]$timeCardId,
@@ -175,44 +175,83 @@ Add-Type -AssemblyName PresentationFramework
 # Create the form
 $form = New-Object System.Windows.Window
 $form.Title = "Enter Details"
-$form.Width = 400
-$form.Height = 250
+$form.Width = 450
+$form.Height = 200
 
-# Create a stack panel to hold the controls
-$stackPanel = New-Object System.Windows.Controls.StackPanel
+# Create a grid to hold the controls
+$grid = New-Object System.Windows.Controls.Grid
+
+# Define rows
+$row1 = New-Object System.Windows.Controls.RowDefinition
+$row2 = New-Object System.Windows.Controls.RowDefinition
+$row3 = New-Object System.Windows.Controls.RowDefinition
+$row4 = New-Object System.Windows.Controls.RowDefinition
+$row1.Height = "Auto"  # Adjust height as needed
+$row2.Height = "Auto"  # Adjust height as needed
+$row3.Height = "Auto"  # Adjust height as needed
+$row4.Height = "Auto"  # Adjust height as needed
+$grid.RowDefinitions.Add($row1)
+$grid.RowDefinitions.Add($row2)
+$grid.RowDefinitions.Add($row3)
+$grid.RowDefinitions.Add($row4)
+
+# Define columns
+$col1 = New-Object System.Windows.Controls.ColumnDefinition
+$col2 = New-Object System.Windows.Controls.ColumnDefinition
+$grid.ColumnDefinitions.Add($col1)
+$grid.ColumnDefinitions.Add($col2)
 
 # Create the email ID label and text box
 $emailLabel = New-Object System.Windows.Controls.Label
 $emailLabel.Content = "Email ID:"
+$emailLabel.Margin = "50,0,0,0"
 $emailTextBox = New-Object System.Windows.Controls.TextBox
-$emailTextBox.Width = 200
+$emailTextBox.Width = 180
+$emailTextBox.Height = 22.5
+$emailTextBox.Margin = "0,0,25,0"
 
 # Create the team name label and text box
 $teamNameLabel = New-Object System.Windows.Controls.Label
 $teamNameLabel.Content = "Team Name:"
+$teamNameLabel.Margin = "50,0,0,0"
 $teamNameTextBox = New-Object System.Windows.Controls.TextBox
-$teamNameTextBox.Width = 200
+$teamNameTextBox.Width = 180
+$teamNameTextBox.Height = 22.5
+$teamNameTextBox.Margin = "0,0,25,0"
 
 # Create the submit button
 $submitButton = New-Object System.Windows.Controls.Button
 $submitButton.Content = "Submit"
 $submitButton.Width = 100
 $submitButton.Height = 30
-$submitButton.Margin = "0,10,0,0"
+$submitButton.Margin = "0,35,0,0"
 $submitButton.Add_Click({
         $form.DialogResult = $true
         $form.Close()
     })
 
-# Add the controls to the stack panel
-$stackPanel.Children.Add($emailLabel)
-$stackPanel.Children.Add($emailTextBox)
-$stackPanel.Children.Add($teamNameLabel)
-$stackPanel.Children.Add($teamNameTextBox)
-$stackPanel.Children.Add($submitButton)
+# Add controls to the grid
+$grid.Children.Add($emailLabel)
+$grid.Children.Add($emailTextBox)
+$grid.Children.Add($teamNameLabel)
+$grid.Children.Add($teamNameTextBox)
+$grid.Children.Add($submitButton)
 
-# Add the stack panel to the form
-$form.Content = $stackPanel
+# Set Grid's row and column positions for each control
+[System.Windows.Controls.Grid]::SetRow($emailLabel, 0)
+[System.Windows.Controls.Grid]::SetColumn($emailLabel, 0)
+[System.Windows.Controls.Grid]::SetRow($emailTextBox, 0)
+[System.Windows.Controls.Grid]::SetColumn($emailTextBox, 1)
+[System.Windows.Controls.Grid]::SetRow($teamNameLabel, 1)
+[System.Windows.Controls.Grid]::SetColumn($teamNameLabel, 0)
+[System.Windows.Controls.Grid]::SetRow($teamNameTextBox, 1)
+[System.Windows.Controls.Grid]::SetColumn($teamNameTextBox, 1)
+[System.Windows.Controls.Grid]::SetRow($submitButton, 3)
+[System.Windows.Controls.Grid]::SetColumn($submitButton, 0)
+[System.Windows.Controls.Grid]::SetColumnSpan($submitButton, 2)
+
+# Add the grid to the form
+$form.Content = $grid
 
 # Set the configuration file path
 $ConfigPath = "$env:userprofile\userconfig.xml"
@@ -223,12 +262,13 @@ if (Test-Path $ConfigPath) {
     $Config = Import-Clixml $ConfigPath
     $email = $Config.email
     $teamName = $Config.teamName
-} else {
+}
+else {
     # The file does not exist, create it
     New-Item -Path $ConfigPath -ItemType File
 
     # Show the form and wait for the user to submit
-    $result = $form.ShowDialog()
+    $result = $form.ShowDialog() | Out-Null
     if ($result -eq $true) {
         $email = $emailTextBox.Text
         $teamName = $teamNameTextBox.Text
@@ -237,11 +277,12 @@ if (Test-Path $ConfigPath) {
 
         # Save the configuration to the XML file
         $Config = @{
-            email = $email
+            email    = $email
             teamName = $teamName
         }
         $Config | Export-Clixml -Path $ConfigPath
-    } else {
+    }
+    else {
         Write-Host "Operation cancelled."
     }
 }
@@ -266,9 +307,8 @@ $onBreak = $false
 $timeCardId = $null
 
 # Main loop to monitor Teams state
-while ($true) {
-    if((Get-Date) -ge $accessTokenExpiration)
-    {
+while ($null -ne $userId -and $null -ne $teamId) {
+    if ((Get-Date) -ge $accessTokenExpiration) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
     }
@@ -288,12 +328,14 @@ while ($true) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
             }
-        } elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
+        }
+        elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
             # End break if user is not Offline and currently on a break
             EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $onBreak = $false
         }
-    } else {
+    }
+    else {
         if ($clockedIn) {
             # Attempt to clock out
             ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
