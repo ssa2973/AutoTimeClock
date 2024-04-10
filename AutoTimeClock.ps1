@@ -79,6 +79,67 @@ function Get-TeamsStatus {
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
     return $response.availability
 }
+
+function Start-ClockInReminder {
+    # Create the reminder popup form
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Set Reminder"
+    $form.Size = New-Object System.Drawing.Size(400, 150)
+    $form.StartPosition = "CenterScreen"
+        
+    # Create the reminder time label
+    $reminderTimeLabel = New-Object System.Windows.Forms.Label
+    $reminderTimeLabel.Text = "Remind to clock in after:"
+    $reminderTimeLabel.Location = New-Object System.Drawing.Point(10, 20)
+    $form.Controls.Add($reminderTimeLabel)
+        
+    # Create a typable dropdown with default values
+    $reminderTimeComboBox = New-Object System.Windows.Forms.ComboBox
+    $reminderTimeComboBox.Location = New-Object System.Drawing.Point(180, 15)  # Adjusted position
+    $reminderTimeComboBox.Width = 80
+    $reminderTimeComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
+    $reminderTimeComboBox.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+    $reminderTimeComboBox.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+    $reminderTimeComboBox.Items.AddRange(@("10", "15", "30"))  # Default values
+    $reminderTimeComboBox.Text = ""  # Initial value
+    $form.Controls.Add($reminderTimeComboBox)
+    
+    $minutesLabel = New-Object System.Windows.Forms.Label
+    $minutesLabel.Text = "minutes"
+    $minutesLabel.Location = New-Object System.Drawing.Point(265, 15)  # Adjusted position
+    $form.Controls.Add($minutesLabel)
+    
+    # Create an Ok button (initially disabled)
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Text = "Ok"
+    $okButton.Location = New-Object System.Drawing.Point(120, 50)
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $okButton.Enabled = $false  # Initially disabled
+    $form.Controls.Add($okButton)
+        
+    # Enable Ok button only for valid numbers
+    $reminderTimeComboBox.Add_TextChanged({
+            $okButton.Enabled = [int]($reminderTimeComboBox.Text) -ge 1  # Enable for numbers 1 or greater
+        })
+    
+    $reminderTimeComboBox.Add_SelectedIndexChanged({
+            $okButton.Enabled = $null -ne $reminderTimeComboBox.SelectedItem
+        })
+    $okButton.Add_Click({
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+        })
+    
+    $result = $form.ShowDialog()  # Capture the dialog result
+
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        return [int]$reminderTimeComboBox.Text
+    }
+    else {
+        return $null  # Return null for other results (Cancel, etc.)
+    }
+}
+
 function ClockIn {
     param (
         [string]$teamId,
@@ -97,13 +158,21 @@ function ClockIn {
         Add-Type -AssemblyName System.Windows.Forms
         $result = [System.Windows.Forms.MessageBox]::Show("It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock In?", "Clock In", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
     }
+
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
         $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
         return $response.id
     }
     else {
-        Write-Host "Clock In cancelled."
-        return $null
+        $selectedReminderTime = Start-ClockInReminder
+        if ($null -ne $selectedReminderTime) {
+            Start-Sleep -Seconds ($selectedReminderTime * 60)
+            $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
+            if ($timeCardId) {
+                return $timeCardId 
+            }
+        }
+        return $null 
     }
 }
 
@@ -177,6 +246,7 @@ $form = New-Object System.Windows.Window
 $form.Title = "Enter Details"
 $form.Width = 450
 $form.Height = 200
+$form.WindowStartupLocation = "CenterScreen"
 
 # Create a grid to hold the controls
 $grid = New-Object System.Windows.Controls.Grid
@@ -268,7 +338,7 @@ else {
     New-Item -Path $ConfigPath -ItemType File
 
     # Show the form and wait for the user to submit
-    $result = $form.ShowDialog() | Out-Null
+    $result = $form.ShowDialog()
     if ($result -eq $true) {
         $email = $emailTextBox.Text
         $teamName = $teamNameTextBox.Text
