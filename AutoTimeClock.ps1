@@ -61,6 +61,28 @@ function Get-TeamId {
     }
 }
 
+function Get-Owners {
+    param (
+        [string]$teamId,
+        [string]$accessToken
+    )
+
+    $apiUrl = "https://graph.microsoft.com/v1.0/groups/$teamId/owners"
+    $headers = @{
+        Authorization = "Bearer $accessToken"
+    }
+
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+
+    if ($response.value.Count -ge 1) {
+        $mails = $response.value | ForEach-Object { $_.mail }
+        return $mails
+    }
+    else {
+        return @()
+    }
+}
+
 function IsTeamsRunning {
     return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
 }
@@ -138,6 +160,55 @@ function Start-ClockInReminder {
     else {
         return $null  # Return null for other results (Cancel, etc.)
     }
+}
+
+function SendMail {
+    param(
+        [string]$userId,
+        [string]$accessToken,
+        [string]$subject,
+        [string]$message,
+        [string[]]$toRecipients,
+        [string[]]$ccRecipients
+    )
+  
+    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/sendMail"
+    $headers = @{
+        Authorization  = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+  
+    $emailBody = @{
+        message =
+        @{
+            subject         = $subject
+            body            = @{
+                contentType = "Text"
+                content     = $message
+            }
+            toRecipients    = @(
+                foreach ($recipient in $toRecipients) {
+                    @{
+                        emailAddress = @{
+                            address = $recipient
+                        }
+                    }
+                }
+            )
+            ccRecipients    = @(
+                foreach ($recipient in $ccRecipients) {
+                    @{
+                        emailAddress = @{
+                            address = $recipient
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    $bodyJson = $emailBody | ConvertTo-Json -Depth 4
+    Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $bodyJson
 }
 
 function ClockIn {
@@ -370,6 +441,7 @@ $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSe
 
 $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
 $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
+$ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
@@ -389,6 +461,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
             if ($null -ne $timeCardId) {
                 $clockedIn = $true
+                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
             }
         }
         
@@ -397,12 +470,14 @@ while ($null -ne $userId -and $null -ne $teamId) {
             if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
+                SendMail -userId $userId -accessToken $accessToken -subject "Break start update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
             }
         }
         elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
             # End break if user is not Offline and currently on a break
             EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $onBreak = $false
+            SendMail -userId $userId -accessToken $accessToken -subject "Break end update" -message "User $email has ended a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     else {
@@ -410,6 +485,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             # Attempt to clock out
             ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $clockedIn = $false
+            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     Start-Sleep -Seconds 60 # Check every minute
