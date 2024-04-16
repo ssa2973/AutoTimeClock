@@ -447,6 +447,10 @@ $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 $clockedIn = $false
 $onBreak = $false
 $timeCardId = $null
+$clockInTime = $null
+$clockOutTime = $null
+$breakStartTime = $null
+$breakEndTime = $null
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
@@ -462,6 +466,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             if ($null -ne $timeCardId) {
                 $clockedIn = $true
                 SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                $clockInTime = Get-Date
             }
         }
         
@@ -470,14 +475,17 @@ while ($null -ne $userId -and $null -ne $teamId) {
             if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
-                SendMail -userId $userId -accessToken $accessToken -subject "Break start update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                $breakStartTime = Get-Date
             }
         }
         elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
             # End break if user is not Offline and currently on a break
             EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $onBreak = $false
-            SendMail -userId $userId -accessToken $accessToken -subject "Break end update" -message "User $email has ended a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+            $breakEndTime = Get-Date
+            $duration = $breakEndTime - $breakStartTime
+            SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     else {
@@ -485,7 +493,9 @@ while ($null -ne $userId -and $null -ne $teamId) {
             # Attempt to clock out
             ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             $clockedIn = $false
-            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+            $clockOutTime = Get-Date
+            $duration = $clockOutTime - $clockInTime
+            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date). Duration - $duration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     Start-Sleep -Seconds 60 # Check every minute
