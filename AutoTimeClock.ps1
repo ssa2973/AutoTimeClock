@@ -455,7 +455,7 @@ $clockInTime = $null
 $clockOutTime = $null
 $breakStartTime = $null
 $breakEndTime = $null
-$breaksDuration = $null
+$breaksDuration = 0
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
@@ -470,7 +470,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
             if ($null -ne $timeCardId) {
                 $clockedIn = $true
-                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
                 $clockInTime = Get-Date
             }
         }
@@ -502,7 +502,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $clockOutTime = Get-Date
             $duration = $clockOutTime - $clockInTime
             $activeDuration = $duration - $breaksDuration
-            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date). Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
+            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     Start-Sleep -Seconds 60 # Check every minute
