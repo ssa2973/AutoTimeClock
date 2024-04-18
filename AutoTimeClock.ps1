@@ -19,25 +19,49 @@ function Get-AccessToken {
 
 function Get-UserIdByEmail {
     param (
-        [string]$accessToken,
-        [string]$email
+      [string] $accessToken,
+      [string] $email
     )
-
-    $apiUrl = "https://graph.microsoft.com/v1.0/users?$filter=mail eq '$email'"
+  
+    $apiUrl = "https://graph.microsoft.com/v1.0/users"  
     $headers = @{
-        Authorization = "Bearer $accessToken"
+      Authorization = "Bearer $accessToken"
     }
-
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
-    if ($response.value.Count -gt 0) {
-        return $response.value[0].id
+  
+    $allUsers = @()
+  
+    do {
+      try {
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -ErrorAction Stop
+  
+        # Check if any users are found
+        if ($response.value.Count -gt 0) {
+          $allUsers += $response.value
+  
+          # Look for @odata.nextLink for subsequent pages
+          $apiUrl = $response."@odata.nextLink"
+        } else {
+          # No users found in this page, exit the loop
+          $apiUrl = $null
+        }
+      } catch {
+        Write-Error "Error retrieving users: $_.Exception.Message"
+        $apiUrl = $null  # Exit the loop on errors
+      }
+    } while ($apiUrl)
+  
+    # Search for the user among all retrieved users
+    foreach ($user in $allUsers) {
+      if ($user.mail -eq $email) {
+        return $user.id  # User found, return its ID
+      }
     }
-    else {
-        Write-Host "User not found."
-        return $null
-    }
-}
-
+  
+    # No user found with matching email
+    Write-Host "User not found with email: $email"
+    return $null
+  }
+  
 function Get-TeamId {
     param (
         [string]$teamName,
