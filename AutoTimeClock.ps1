@@ -108,7 +108,8 @@ function Start-ClockInReminder {
     $form.Text = "Set Reminder"
     $form.Size = New-Object System.Drawing.Size(400, 150)
     $form.StartPosition = "CenterScreen"
-        
+    $form.TopMost = $true  # Always on top
+    
     # Create the reminder time label
     $reminderTimeLabel = New-Object System.Windows.Forms.Label
     $reminderTimeLabel.Text = "Remind to clock in after:"
@@ -181,12 +182,12 @@ function SendMail {
     $emailBody = @{
         message =
         @{
-            subject         = $subject
-            body            = @{
+            subject      = $subject
+            body         = @{
                 contentType = "Text"
                 content     = $message
             }
-            toRecipients    = @(
+            toRecipients = @(
                 foreach ($recipient in $toRecipients) {
                     @{
                         emailAddress = @{
@@ -195,7 +196,7 @@ function SendMail {
                     }
                 }
             )
-            ccRecipients    = @(
+            ccRecipients = @(
                 foreach ($recipient in $ccRecipients) {
                     @{
                         emailAddress = @{
@@ -227,7 +228,9 @@ function ClockIn {
     if ($null -ne $teamId -and $null -ne $userId) {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
-        $result = [System.Windows.Forms.MessageBox]::Show("It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock In?", "Clock In", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        $form = New-Object System.Windows.Forms.Form
+        $form.TopMost = $true  # Set the form to appear in the foreground
+        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock In?", "Clock In", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    
     }
 
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
@@ -265,8 +268,9 @@ function ClockOut {
     if (![string]::IsNullOrEmpty($timeCardId)) {        
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
-        $result = [System.Windows.Forms.MessageBox]::Show("It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
-    }
+        $form = New-Object System.Windows.Forms.Form
+        $form.TopMost = $true  # Set the form to appear in the foreground
+        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    }
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
         Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
     }
