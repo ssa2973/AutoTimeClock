@@ -451,6 +451,7 @@ $clockInTime = $null
 $clockOutTime = $null
 $breakStartTime = $null
 $breakEndTime = $null
+$breaksDuration = $null
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
@@ -485,6 +486,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $onBreak = $false
             $breakEndTime = Get-Date
             $duration = $breakEndTime - $breakStartTime
+            $breaksDuration += $duration
             SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
@@ -495,7 +497,8 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $clockedIn = $false
             $clockOutTime = Get-Date
             $duration = $clockOutTime - $clockInTime
-            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date). Duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+            $activeDuration = $duration - $breaksDuration
+            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date). Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     Start-Sleep -Seconds 60 # Check every minute
