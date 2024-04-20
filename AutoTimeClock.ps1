@@ -539,9 +539,6 @@ if (Test-Path $ConfigPath) {
     $teamName = $Config.teamName
 }
 else {
-    # The file does not exist, create it
-    New-Item -Path $ConfigPath -ItemType File
-
     # Show the form and wait for the user to submit
     $result = $form.ShowDialog()
     if ($result -eq $true) {
@@ -549,12 +546,14 @@ else {
         $teamName = $teamNameTextBox.Text
         Write-Host "Email: $email"
         Write-Host "Team Name: $teamName"
-
+        
         # Send OTP to the entered email
         $otp = Send-Otp -email $email -otp $mainOtp
         $otpResult = VerifyOtp -mainOtp $mainOtp
-
+        
         if ($otpResult -eq $true) {
+            # The file does not exist, create it
+            New-Item -Path $ConfigPath -ItemType File
             # Save the configuration to the XML file
             $Config = @{
                 email    = $email
