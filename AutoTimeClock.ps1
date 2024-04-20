@@ -133,7 +133,7 @@ function Send-Otp {
     $message = "Your OTP for verifying your email address is: $otp"
     Send-MailMessage -From $mailId -To $email -Subject $subject -Body $message -SmtpServer $smtpServer -Port $smtpPort -UseSsl -Credential $credentials
 }
-        
+
 function Get-TeamsStatus {
     param(
         [string]$accessToken,
@@ -564,6 +564,8 @@ else {
         }
         else {
             Write-Host "OTP validation failed. Please enter email and team name again."
+            # Terminate the program
+            exit
         }
     }
     else {
