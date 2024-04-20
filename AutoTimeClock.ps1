@@ -19,61 +19,63 @@ function Get-AccessToken {
 
 function Get-UserIdByEmail {
     param (
-      [string] $accessToken,
-      [string] $email
+        [string] $accessToken,
+        [string] $email
     )
   
     $apiUrl = "https://graph.microsoft.com/v1.0/users"  
     $headers = @{
-      Authorization = "Bearer $accessToken"
+        Authorization = "Bearer $accessToken"
     }
   
     $allUsers = @()
   
     do {
-      try {
-        $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -ErrorAction Stop
+        try {
+            $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -ErrorAction Stop
   
-        # Check if any users are found
-        if ($response.value.Count -gt 0) {
-          $allUsers += $response.value
+            # Check if any users are found
+            if ($response.value.Count -gt 0) {
+                $allUsers += $response.value
   
-          # Look for @odata.nextLink for subsequent pages
-          $apiUrl = $response."@odata.nextLink"
-        } else {
-          # No users found in this page, exit the loop
-          $apiUrl = $null
+                # Look for @odata.nextLink for subsequent pages
+                $apiUrl = $response."@odata.nextLink"
+            }
+            else {
+                # No users found in this page, exit the loop
+                $apiUrl = $null
+            }
         }
-      } catch {
-        Write-Error "Error retrieving users: $_.Exception.Message"
-        $apiUrl = $null  # Exit the loop on errors
-      }
+        catch {
+            Write-Error "Error retrieving users: $_.Exception.Message"
+            $apiUrl = $null  # Exit the loop on errors
+        }
     } while ($apiUrl)
   
     # Search for the user among all retrieved users
     foreach ($user in $allUsers) {
-      if ($user.mail -eq $email) {
-        return $user.id  # User found, return its ID
-      }
+        if ($user.mail -eq $email) {
+            return $user.id  # User found, return its ID
+        }
     }
   
     # No user found with matching email
     Write-Host "User not found with email: $email"
     return $null
-  }
-  
+}
+
 function Get-TeamId {
     param (
         [string]$teamName,
         [string]$accessToken,
         [string]$userId
     )
-
+        
     $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/joinedTeams"
     $headers = @{
         Authorization = "Bearer $accessToken"
     }
-
+    
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
     $team = $response.value | Where-Object { $_.displayName -eq $teamName }
     if ($team) {
@@ -90,14 +92,14 @@ function Get-Owners {
         [string]$teamId,
         [string]$accessToken
     )
-
+        
     $apiUrl = "https://graph.microsoft.com/v1.0/groups/$teamId/owners"
     $headers = @{
         Authorization = "Bearer $accessToken"
     }
-
+        
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
-
+        
     if ($response.value.Count -ge 1) {
         $mails = $response.value | ForEach-Object { $_.mail }
         return $mails
@@ -106,26 +108,47 @@ function Get-Owners {
         return @()
     }
 }
-
+    
 function IsTeamsRunning {
     return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
 }
-
+    
+$mainOtp = Get-Random -Minimum 100000 -Maximum 999999
+function Send-Otp {
+    param (
+        [string]$email,
+        [string]$otp
+    )
+    # Load configuration from file
+    $configFile = "mail-config.json"
+    $config = Get-Content $configFile | ConvertFrom-Json
+            
+    $mailId = $config.mail
+    $password = $config.password
+    $smtpServer = $config.smtpServer
+    $smtpPort = $config.smtpPort
+            
+    $credentials = New-Object -TypeName PSCredential -ArgumentList $mailId, ($password | ConvertTo-SecureString -AsPlainText -Force)
+    $subject = "One-Time Password (OTP) for mail verification"
+    $message = "Your OTP for verifying your email address is: $otp"
+    Send-MailMessage -From $mailId -To $email -Subject $subject -Body $message -SmtpServer $smtpServer -Port $smtpPort -UseSsl -Credential $credentials
+}
+        
 function Get-TeamsStatus {
     param(
         [string]$accessToken,
         [string]$userId
     )
-
+                
     $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/presence"
     $headers = @{
         Authorization = "Bearer $accessToken"
     }
-
+                
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
     return $response.availability
 }
-
+            
 function Start-ClockInReminder {
     # Create the reminder popup form
     $form = New-Object System.Windows.Forms.Form
@@ -294,7 +317,8 @@ function ClockOut {
         Add-Type -AssemblyName System.Windows.Forms
         $form = New-Object System.Windows.Forms.Form
         $form.TopMost = $true  # Set the form to appear in the foreground
-        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    }
+        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    
+    }
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
         Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
     }
@@ -337,6 +361,87 @@ function EndBreak {
     Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
 }
 
+function VerifyOtp {
+    param(
+        [string]$mainOtp
+    )
+    # Prompt for OTP verification
+    $otpForm = New-Object System.Windows.Window
+    $otpForm.Title = "OTP Verification"
+    $otpForm.Width = 300
+    $otpForm.Height = 150
+    
+    # Create a Grid to hold the child elements
+    $otpGrid = New-Object System.Windows.Controls.Grid
+    
+    # Define rows for the grid
+    $rowDefinition1 = New-Object System.Windows.Controls.RowDefinition
+    $rowDefinition2 = New-Object System.Windows.Controls.RowDefinition
+    $rowDefinition1.Height = [System.Windows.GridLength]::Auto
+    $rowDefinition2.Height = [System.Windows.GridLength]::Auto
+    $otpGrid.RowDefinitions.Add($rowDefinition1)
+    $otpGrid.RowDefinitions.Add($rowDefinition2)
+    
+    # Define columns for the grid
+    $columnDefinition1 = New-Object System.Windows.Controls.ColumnDefinition
+    $columnDefinition1.Width = [System.Windows.GridLength]::Auto
+    $otpGrid.ColumnDefinitions.Add($columnDefinition1)
+    
+    $columnDefinition2 = New-Object System.Windows.Controls.ColumnDefinition
+    $columnDefinition2.Width = [System.Windows.GridLength]::Auto
+    $otpGrid.ColumnDefinitions.Add($columnDefinition2)
+    
+    $columnDefinition3 = New-Object System.Windows.Controls.ColumnDefinition
+    $columnDefinition3.Width = [System.Windows.GridLength]::Auto
+    $otpGrid.ColumnDefinitions.Add($columnDefinition3)
+    
+    $otpLabel = New-Object System.Windows.Controls.Label
+    $otpLabel.Content = "Enter OTP:"
+    $otpLabel.Margin = "10,10,0,0"
+    $otpLabel.VerticalAlignment = "Center"
+    [System.Windows.Controls.Grid]::SetRow($otpLabel, 0)
+    [System.Windows.Controls.Grid]::SetColumn($otpLabel, 0)
+    
+    $otpTextBox = New-Object System.Windows.Controls.TextBox
+    $otpTextBox.Width = 100
+    $otpTextBox.Height = 22.5
+    $otpTextBox.Margin = "10,10,0,0"
+    $otpTextBox.VerticalAlignment = "Center"
+    [System.Windows.Controls.Grid]::SetRow($otpTextBox, 0)
+    [System.Windows.Controls.Grid]::SetColumn($otpTextBox, 1)
+    
+    $otpSubmitButton = New-Object System.Windows.Controls.Button
+    $otpSubmitButton.Content = "Submit"
+    $otpSubmitButton.Width = 100
+    $otpSubmitButton.Height = 30
+    $otpSubmitButton.Margin = "10,10,0,0"
+    $otpSubmitButton.VerticalAlignment = "Center"
+    $otpSubmitButton.Add_Click({
+            if ($otpTextBox.Text -eq $mainOtp) {
+                $otpForm.DialogResult = $true
+                $otpForm.Close()
+            }
+            else {
+                [System.Windows.MessageBox]::Show("Invalid OTP. Please try again.")
+            }
+        })
+    [System.Windows.Controls.Grid]::SetRow($otpSubmitButton, 1)
+    [System.Windows.Controls.Grid]::SetColumn($otpSubmitButton, 1)
+    
+    # Add child elements to the Grid
+    [void]$otpGrid.Children.Add($otpLabel)
+    [void]$otpGrid.Children.Add($otpTextBox)
+    [void]$otpGrid.Children.Add($otpSubmitButton)
+    
+    # Set the Grid as the content of the window
+    $otpForm.Content = $otpGrid
+    
+    $otpForm.WindowStartupLocation = "CenterScreen"
+    $otpForm.Topmost = $true
+    
+    return $otpForm.ShowDialog()
+}
+
 # Load necessary assemblies
 Add-Type -AssemblyName PresentationFramework
 
@@ -346,6 +451,7 @@ $form.Title = "Enter Details"
 $form.Width = 450
 $form.Height = 200
 $form.WindowStartupLocation = "CenterScreen"
+$form.Topmost = $true
 
 # Create a grid to hold the controls
 $grid = New-Object System.Windows.Controls.Grid
@@ -400,11 +506,11 @@ $submitButton.Add_Click({
     })
 
 # Add controls to the grid
-$grid.Children.Add($emailLabel)
-$grid.Children.Add($emailTextBox)
-$grid.Children.Add($teamNameLabel)
-$grid.Children.Add($teamNameTextBox)
-$grid.Children.Add($submitButton)
+[void]$grid.Children.Add($emailLabel)
+[void]$grid.Children.Add($emailTextBox)
+[void]$grid.Children.Add($teamNameLabel)
+[void]$grid.Children.Add($teamNameTextBox)
+[void]$grid.Children.Add($submitButton)
 
 # Set Grid's row and column positions for each control
 [System.Windows.Controls.Grid]::SetRow($emailLabel, 0)
@@ -444,19 +550,29 @@ else {
         Write-Host "Email: $email"
         Write-Host "Team Name: $teamName"
 
-        # Save the configuration to the XML file
-        $Config = @{
-            email    = $email
-            teamName = $teamName
+        # Send OTP to the entered email
+        $otp = Send-Otp -email $email -otp $mainOtp
+        $otpResult = VerifyOtp -mainOtp $mainOtp
+
+        if ($otpResult -eq $true) {
+            # Save the configuration to the XML file
+            $Config = @{
+                email    = $email
+                teamName = $teamName
+            }
+            $Config | Export-Clixml -Path $ConfigPath
         }
-        $Config | Export-Clixml -Path $ConfigPath
+        else {
+            Write-Host "OTP validation failed. Please enter email and team name again."
+        }
     }
     else {
         Write-Host "Operation cancelled."
     }
 }
+
 # Load configuration from file
-$configFile = "config.json"
+$configFile = "app-config.json"
 $config = Get-Content $configFile | ConvertFrom-Json
 
 $clientId = $config.clientId
