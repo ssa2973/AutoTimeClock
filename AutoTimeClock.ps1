@@ -604,7 +604,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
     }
-    $userStatus = Get-TeamsStatus -accessToken $accessToken -userId $userId
+    # $userStatus = Get-TeamsStatus -accessToken $accessToken -userId $userId
     if (IsTeamsRunning) {
         if (-not $clockedIn) {
             # Attempt to clock in
@@ -616,24 +616,24 @@ while ($null -ne $userId -and $null -ne $teamId) {
             }
         }
         
-        if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
-            # Start break if user is Away or BeRightBack and not already on a break
-            if (-not $onBreak -and $clockedIn) {
-                StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-                $onBreak = $true
-                SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
-                $breakStartTime = Get-Date
-            }
-        }
-        elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
-            # End break if user is not Offline and currently on a break
-            EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-            $onBreak = $false
-            $breakEndTime = Get-Date
-            $duration = $breakEndTime - $breakStartTime
-            $breaksDuration += $duration
-            SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
-        }
+        # if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
+        #     # Start break if user is Away or BeRightBack and not already on a break
+        #     if (-not $onBreak -and $clockedIn) {
+        #         StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+        #         $onBreak = $true
+        #         SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+        #         $breakStartTime = Get-Date
+        #     }
+        # }
+        # elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
+        #     # End break if user is not Offline and currently on a break
+        #     EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+        #     $onBreak = $false
+        #     $breakEndTime = Get-Date
+        #     $duration = $breakEndTime - $breakStartTime
+        #     $breaksDuration += $duration
+        #     SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+        # }
     }
     else {
         if ($clockedIn) {
@@ -646,5 +646,5 @@ while ($null -ne $userId -and $null -ne $teamId) {
             SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
-    Start-Sleep -Seconds 60 # Check every minute
+    # Start-Sleep -Seconds 60 # Check every minute
 }
