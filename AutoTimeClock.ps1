@@ -220,43 +220,28 @@ function SendMail {
         [string[]]$ccRecipients
     )
   
-    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/sendMail"
-    $headers = @{
-        Authorization  = "Bearer $accessToken"
-        "Content-Type" = "application/json"
+    # Load configuration from file
+    $configFile = "mail-config.json"
+    $config = Get-Content $configFile | ConvertFrom-Json
+                
+    $mailId = $config.mail
+    $password = $config.password
+    $smtpServer = $config.smtpServer
+    $smtpPort = $config.smtpPort
+                
+    $credentials = New-Object -TypeName PSCredential -ArgumentList $mailId, ($password | ConvertTo-SecureString -AsPlainText -Force)
+    $mail = @{
+        From       = $mailId
+        To         = $toRecipients
+        Cc         = $ccRecipients
+        Subject    = $subject
+        Body       = $message
+        SmtpServer = $smtpServer
+        Port       = $smtpPort
+        UseSsl     = $true
+        Credential = $credentials
     }
-  
-    $emailBody = @{
-        message =
-        @{
-            subject      = $subject
-            body         = @{
-                contentType = "Text"
-                content     = $message
-            }
-            toRecipients = @(
-                foreach ($recipient in $toRecipients) {
-                    @{
-                        emailAddress = @{
-                            address = $recipient
-                        }
-                    }
-                }
-            )
-            ccRecipients = @(
-                foreach ($recipient in $ccRecipients) {
-                    @{
-                        emailAddress = @{
-                            address = $recipient
-                        }
-                    }
-                }
-            )
-        }
-    }
-
-    $bodyJson = $emailBody | ConvertTo-Json -Depth 4
-    Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $bodyJson
+    Send-MailMessage @mail -BodyAsHtml    
 }
 
 function ClockIn {
