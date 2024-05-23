@@ -153,7 +153,11 @@ function Start-ClockInReminder {
     # Create the reminder popup form
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Set Reminder"
-    $form.Size = New-Object System.Drawing.Size(400, 150)
+
+    # Calculate form size based on percentages
+    $formWidth = ($screenWidth * $formWidthPercentage).ToString("0")  # Round to nearest integer
+    $formHeight = ($screenHeight * $formHeightPercentage).ToString("0")
+    $form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
     $form.StartPosition = "CenterScreen"
     $form.TopMost = $true  # Always on top
     
@@ -297,18 +301,26 @@ function ClockOut {
         "MS-APP-ACTS-AS" = $userId
     }
 
-    if (![string]::IsNullOrEmpty($timeCardId)) {        
+    if (![string]::IsNullOrEmpty($timeCardId)) {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
         $form = New-Object System.Windows.Forms.Form
         $form.TopMost = $true  # Set the form to appear in the foreground
-        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    
-    }
-    if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-        Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
-    }
-    else {
-        Write-Host "Clock Out cancelled."
+        # Loop until user clocks out or cancels repeatedly
+        do {
+            $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)  
+      
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
+                # Exit the loop after clocking out
+                break
+            }
+            else {
+                # Display message and wait 15 seconds before prompting again
+                Write-Host "Clock Out cancelled."
+                Start-Sleep -Seconds 10`
+            }
+        } while ($true)  # Loop continues until break is reached
     }
 }
 
@@ -427,14 +439,21 @@ function VerifyOtp {
     return $otpForm.ShowDialog()
 }
 
+# Define desired form size as a percentage of screen size
+$formWidthPercentage = 0.3  # 60% of screen width
+$formHeightPercentage = 0.2  # 30% of screen height
+
+$screenWidth = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
+$screenHeight = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
+
 # Load necessary assemblies
 Add-Type -AssemblyName PresentationFramework
 
 # Create the form
 $form = New-Object System.Windows.Window
 $form.Title = "Enter Details"
-$form.Width = 450
-$form.Height = 200
+$form.Width = ($screenWidth * $formWidthPercentage).ToString("0")  # Round to nearest integer
+$form.Height = ($screenHeight * $formHeightPercentage).ToString("0")
 $form.WindowStartupLocation = "CenterScreen"
 $form.Topmost = $true
 
@@ -575,12 +594,12 @@ $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
-$onBreak = $false
+# $onBreak = $false
 $timeCardId = $null
 $clockInTime = $null
 $clockOutTime = $null
-$breakStartTime = $null
-$breakEndTime = $null
+# $breakStartTime = $null
+# $breakEndTime = $null
 $breaksDuration = 0
 
 # Main loop to monitor Teams state
