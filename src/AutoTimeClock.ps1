@@ -120,7 +120,7 @@ function Send-Otp {
         [string]$otp
     )
     # Load configuration from file
-    $configFile = "mail-config.json"
+    $configFile = "src/mail-config.json"
     $config = Get-Content $configFile | ConvertFrom-Json
             
     $mailId = $config.mail
@@ -225,7 +225,7 @@ function SendMail {
     )
   
     # Load configuration from file
-    $configFile = "mail-config.json"
+    $configFile = "src/mail-config.json"
     $config = Get-Content $configFile | ConvertFrom-Json
                 
     $mailId = $config.mail
@@ -577,7 +577,7 @@ else {
 }
 
 # Load configuration from file
-$configFile = "app-config.json"
+$configFile = "src/app-config.json"
 $config = Get-Content $configFile | ConvertFrom-Json
 
 $clientId = $config.clientId
