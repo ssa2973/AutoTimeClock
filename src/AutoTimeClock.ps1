@@ -54,7 +54,7 @@ function Get-AuthorizationCode {
 
     # Create a form with a web browser control
     $form = New-Object -TypeName System.Windows.Forms.Form
-    $form.Size = New-Object -TypeName System.Drawing.Size(800, 600)
+    $form.Size = New-Object -TypeName System.Drawing.Size(1366, 768)
     $webBrowser = New-Object -TypeName System.Windows.Forms.WebBrowser
     $form.Controls.Add($webBrowser)
     
@@ -399,6 +399,18 @@ function ClockOut {
     }
 }
 
+function Get-PresenceSubscription {
+    param(
+        [string]$accessToken
+    )
+    $apiUrl = "https://graph.microsoft.com/beta/subscriptions"
+    $headers = @{
+        Authorization = "Bearer $accessToken"
+    }
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    return $response.value[0].id
+}
+
 function New-PresenceSubscription {
     param(
         [string]$accessToken,
@@ -723,8 +735,14 @@ $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
 $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
-$presenceSubscriptionId = New-PresenceSubscription -accessToken $delegatedToken -userId $userId -tenantId $tenantId
+$presenceSubscriptionId = Get-PresenceSubscription -accessToken $delegatedToken
 
+if ($null -eq $presenceSubscriptionId) {
+    $presenceSubscriptionId = New-PresenceSubscription -accessToken $delegatedToken -userId $userId -tenantId $tenantId
+}
+else {
+    Update-PresenceSubscription -subscriptionId $presenceSubscriptionId -accessToken $delegatedToken
+}
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
 $onBreak = $false
