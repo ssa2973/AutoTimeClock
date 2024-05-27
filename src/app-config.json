@@ -1,5 +1,7 @@
 {
-    "clientId" : "f3fc1500-823f-4c51-acc0-dfd10fd59bd2",
-    "clientSecret" : "M7d8Q~TbsfI.wcIdBEujpp4XskZ0wHNRqlu7RaIj",
-    "tenantId" : "8e8a9805-15bc-44e4-9fd5-8bf2cd01fe09"
+   "clientId": "f3fc1500-823f-4c51-acc0-dfd10fd59bd2",
+   "clientSecret": "M7d8Q~TbsfI.wcIdBEujpp4XskZ0wHNRqlu7RaIj",
+   "tenantId": "8e8a9805-15bc-44e4-9fd5-8bf2cd01fe09",
+   "redirectUri": "https://login.microsoftonline.com/common/oauth2/nativeclient",
+   "webhookUrl": "https://a3d3-2401-4900-1cb1-1364-615f-118c-a2b-2123.ngrok-free.app"
 }

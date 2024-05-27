@@ -1,3 +1,5 @@
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$global:authorization_code = $null
 function Get-AccessToken {
     param (
         [string]$clientId,
@@ -15,6 +17,70 @@ function Get-AccessToken {
 
     $response = Invoke-RestMethod -Uri $tokenEndpoint -Method Post -Body $body
     return $response.access_token
+}
+
+function Get-DelegatedAccessToken {
+    param(
+        [string]$clientId,
+        [string]$tenantId,
+        [string]$redirectUri
+    )
+    Get-AuthorizationCode -clientId $clientId -tenantId $tenantId -redirectUri $redirectUri
+
+    $tokenEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
+    $body = @{
+        grant_type   = "authorization_code"
+        client_id    = $clientId
+        redirect_uri = $redirectUri
+        code         = $global:authorization_code
+        scope        = "https://graph.microsoft.com/.default"
+    }
+    $headers = @{
+        "Content-Type" = "application/x-www-form-urlencoded"
+    }
+    $response = Invoke-RestMethod -Uri $tokenEndpoint -Method Post -Body $body -Headers $headers
+    return $response.access_token
+}
+
+function Get-AuthorizationCode {
+    param (
+        [string]$clientId,
+        [string]$tenantId,
+        [string]$redirectUri
+    )
+    $authCodeEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/authorize?response_type=code&client_id=$clientId&state=12345&scope=offline_access%20https%3A%2F%2Fgraph.microsoft.com%2F.default&redirect_uri=$redirectUri&response_mode=query"
+        
+    Add-Type -AssemblyName System.Windows.Forms
+
+    # Create a form with a web browser control
+    $form = New-Object -TypeName System.Windows.Forms.Form
+    $form.Size = New-Object -TypeName System.Drawing.Size(800, 600)
+    $webBrowser = New-Object -TypeName System.Windows.Forms.WebBrowser
+    $form.Controls.Add($webBrowser)
+    
+    # Navigate to the authorization code endpoint URL
+    $webBrowser.Navigate($authCodeEndpoint)
+    
+    # Wait for the user to authorize and for the redirection to happen
+    $handler = {
+        param(
+            [System.Object]$_sender,
+            [System.EventArgs]$e
+        )
+        
+        $url = $_sender.Url.AbsoluteUri
+        if ($url -match 'code=(.*)&state=12345') {
+            $global:authorization_code = $matches[1]
+            Write-Host "Authorization code: $global:authorization_code"
+            $form.Close()
+        }
+    }
+          
+    # Register event handler for Navigated event
+    $webBrowser.add_Navigated($handler)
+    
+    # Show the form
+    $form.ShowDialog() | Out-Null
 }
 
 function Get-UserIdByEmail {
@@ -135,18 +201,27 @@ function Send-Otp {
 }
 
 function Get-TeamsStatus {
-    param(
-        [string]$accessToken,
+    param (
         [string]$userId
     )
-                
-    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/presence"
+
+    $apiUrl = "$webhookUrl/events"
     $headers = @{
-        Authorization = "Bearer $accessToken"
+        "ngrok-skip-browser-warning" = "true"
     }
-                
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
-    return $response.availability
+    
+    $response = Invoke-WebRequest -Uri $apiUrl -Method Get -Headers $headers -UserAgent "MyApp/0.0.1"
+    $jsonResponse = $response.Content | ConvertFrom-Json
+
+    # Iterate through the JSON response in reverse to find the latest entry
+    for ($i = $jsonResponse.Length - 1; $i -ge 0; $i--) {
+        $item = $jsonResponse[$i]
+        if ($item.id -eq $userId) {
+            return $item.availability
+        }
+    }
+
+    return $null  # Return null if no matching userId is found
 }
             
 function Start-ClockInReminder {
@@ -324,6 +399,58 @@ function ClockOut {
     }
 }
 
+function New-PresenceSubscription {
+    param(
+        [string]$accessToken,
+        [string]$userId,
+        [string]$tenantId
+    )
+    $apiUrl = "https://graph.microsoft.com/beta/subscriptions" 
+    $headers = @{
+        Authorization  = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+    $body = @{
+        changeType         = "updated"
+        notificationUrl    = "$webhookUrl/notifications"
+        resource           = "communications/presences/$userId"
+        expirationDateTime = [DateTime]::UtcNow.AddHours(1).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffffZ")
+        clientState        = "secret"
+        tenantId           = $tenantId
+    }
+    $jsonBody = $body | ConvertTo-Json
+    try {
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $jsonBody
+        return $response.id
+    }
+    catch {
+        Write-Host "Error creating subscription: $_"
+    }
+}
+
+function Update-PresenceSubscription {
+    param(
+        [string]$subscriptionId,
+        [string]$accessToken
+    )
+    $apiUrl = "https://graph.microsoft.com/beta/subscriptions/$subscriptionId"
+    $headers = @{
+        Authorization  = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+    $body = @{
+        expirationDateTime = [DateTime]::UtcNow.AddHours(1).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffffZ")
+    }
+    $jsonBody = $body | ConvertTo-Json
+    try {
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Patch -Headers $headers -Body $jsonBody
+        return $response.id
+    }
+    catch {
+        Write-Host "Error updating subscription: $_"
+    }
+}
+
 function StartBreak {
     param (
         [string]$teamId,
@@ -439,6 +566,7 @@ function VerifyOtp {
     return $otpForm.ShowDialog()
 }
 
+[void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
 # Define desired form size as a percentage of screen size
 $formWidthPercentage = 0.3  # 60% of screen width
 $formHeightPercentage = 0.2  # 30% of screen height
@@ -583,23 +711,28 @@ $config = Get-Content $configFile | ConvertFrom-Json
 $clientId = $config.clientId
 $clientSecret = $config.clientSecret
 $tenantId = $config.tenantId
+$redirectUri = $config.redirectUri
+$webhookUrl = $config.webhookUrl
 
 # Get access token
 $accessTokenExpiration = (Get-Date).AddSeconds(3599)
 $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+$delegatedToken = Get-DelegatedAccessToken -clientId $clientId -tenantId $tenantId -redirectUri $redirectUri
 
 $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
 $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
+$presenceSubscriptionId = New-PresenceSubscription -accessToken $delegatedToken -userId $userId -tenantId $tenantId
+
 # Variables to track clock-in and clock-out state
 $clockedIn = $false
-# $onBreak = $false
+$onBreak = $false
 $timeCardId = $null
 $clockInTime = $null
 $clockOutTime = $null
-# $breakStartTime = $null
-# $breakEndTime = $null
+$breakStartTime = $null
+$breakEndTime = $null
 $breaksDuration = 0
 
 # Main loop to monitor Teams state
@@ -607,8 +740,10 @@ while ($null -ne $userId -and $null -ne $teamId) {
     if ((Get-Date) -ge $accessTokenExpiration) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+        $delegatedToken = Get-DelegatedAccessToken -clientId $clientId -tenantId $tenantId -redirectUri $redirectUri
+        Update-PresenceSubscription -subscriptionId $presenceSubscriptionId -accessToken $delegatedToken
     }
-    # $userStatus = Get-TeamsStatus -accessToken $accessToken -userId $userId
+    $userStatus = Get-TeamsStatus -userId $userId
     if (IsTeamsRunning) {
         if (-not $clockedIn) {
             # Attempt to clock in
@@ -620,24 +755,24 @@ while ($null -ne $userId -and $null -ne $teamId) {
             }
         }
         
-        # if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
-        #     # Start break if user is Away or BeRightBack and not already on a break
-        #     if (-not $onBreak -and $clockedIn) {
-        #         StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-        #         $onBreak = $true
-        #         SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
-        #         $breakStartTime = Get-Date
-        #     }
-        # }
-        # elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
-        #     # End break if user is not Offline and currently on a break
-        #     EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-        #     $onBreak = $false
-        #     $breakEndTime = Get-Date
-        #     $duration = $breakEndTime - $breakStartTime
-        #     $breaksDuration += $duration
-        #     SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
-        # }
+        if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
+            # Start break if user is Away or BeRightBack and not already on a break
+            if (-not $onBreak -and $clockedIn) {
+                StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+                $onBreak = $true
+                SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                $breakStartTime = Get-Date
+            }
+        }
+        elseif ($userStatus -ne "Offline" -and $onBreak -and $clockedIn) {
+            # End break if user is not Offline and currently on a break
+            EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+            $onBreak = $false
+            $breakEndTime = Get-Date
+            $duration = $breakEndTime - $breakStartTime
+            $breaksDuration += $duration
+            SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+        }
     }
     else {
         if ($clockedIn) {
