@@ -54,8 +54,9 @@ function Get-AuthorizationCode {
 
     # Create a form with a web browser control
     $form = New-Object -TypeName System.Windows.Forms.Form
-    $form.Size = New-Object -TypeName System.Drawing.Size(1366, 768)
+    $form.Size = New-Object -TypeName System.Drawing.Size(800, 600)
     $webBrowser = New-Object -TypeName System.Windows.Forms.WebBrowser
+    $webBrowser.Dock = [System.Windows.Forms.DockStyle]::Fill
     $form.Controls.Add($webBrowser)
     
     # Navigate to the authorization code endpoint URL
@@ -210,12 +211,11 @@ function Get-TeamsStatus {
         "ngrok-skip-browser-warning" = "true"
     }
     
-    $response = Invoke-WebRequest -Uri $apiUrl -Method Get -Headers $headers -UserAgent "MyApp/0.0.1"
-    $jsonResponse = $response.Content | ConvertFrom-Json
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -UserAgent "MyApp/0.0.1" -UseBasicParsing
 
     # Iterate through the JSON response in reverse to find the latest entry
-    for ($i = $jsonResponse.Length - 1; $i -ge 0; $i--) {
-        $item = $jsonResponse[$i]
+    for ($i = $response.Length - 1; $i -ge 0; $i--) {
+        $item = $response[$i]
         if ($item.id -eq $userId) {
             return $item.availability
         }
@@ -292,7 +292,6 @@ function Start-ClockInReminder {
 function SendMail {
     param(
         [string]$userId,
-        [string]$accessToken,
         [string]$subject,
         [string]$message,
         [string[]]$toRecipients,
@@ -452,6 +451,7 @@ function Update-PresenceSubscription {
     }
     $body = @{
         expirationDateTime = [DateTime]::UtcNow.AddHours(1).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffffZ")
+        notificationUrl    = "$webhookUrl/notifications"
     }
     $jsonBody = $body | ConvertTo-Json
     try {
@@ -768,7 +768,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
             if ($null -ne $timeCardId) {
                 $clockedIn = $true
-                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
+                SendMail -userId $userId -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
                 $clockInTime = Get-Date
             }
         }
@@ -778,7 +778,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
-                SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                SendMail -userId $userId -subject "Break update" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
                 $breakStartTime = Get-Date
             }
         }
@@ -789,7 +789,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $breakEndTime = Get-Date
             $duration = $breakEndTime - $breakStartTime
             $breaksDuration += $duration
-            SendMail -userId $userId -accessToken $accessToken -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+            SendMail -userId $userId -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     else {
@@ -800,7 +800,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $clockOutTime = Get-Date
             $duration = $clockOutTime - $clockInTime
             $activeDuration = $duration - $breaksDuration
-            SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
+            SendMail -userId $userId -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
         }
     }
     # Start-Sleep -Seconds 60 # Check every minute
