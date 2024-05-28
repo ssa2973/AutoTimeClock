@@ -110,7 +110,7 @@ function Get-Owners {
 }
     
 function IsTeamsRunning {
-    return $null -ne (Get-Process | Where-Object { $_.Name -match "Teams" })
+    return $null -ne (Get-Process | Where-Object { $_.Name -match "ms-teams" })
 }
     
 $mainOtp = Get-Random -Minimum 100000 -Maximum 999999
@@ -439,9 +439,27 @@ function VerifyOtp {
     return $otpForm.ShowDialog()
 }
 
+# Unique process name
+$processName = "AutoTimeClock"
+$process = Get-Process -Name $processName -ErrorAction SilentlyContinue
+# Check if another instance is running
+if ($process.Count -gt 1) {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Error"
+    $form.Size = New-Object System.Drawing.Size(300, 200)
+    $form.StartPosition = 'CenterScreen'
+    $label = New-Object System.Windows.Forms.Label
+    $label.Location = New-Object System.Drawing.Point(10, 20)
+    $label.Size = New-Object System.Drawing.Size(280, 20)
+    $label.Text = "An instance of the application is already running."
+    $form.Controls.Add($label)
+    $form.ShowDialog()
+    exit
+}
+[void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
 # Define desired form size as a percentage of screen size
-$formWidthPercentage = 0.3  # 60% of screen width
-$formHeightPercentage = 0.2  # 30% of screen height
+$formWidthPercentage = 0.3  # 30% of screen width
+$formHeightPercentage = 0.25  # 25% of screen height
 
 $screenWidth = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
 $screenHeight = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
@@ -485,8 +503,8 @@ $emailLabel = New-Object System.Windows.Controls.Label
 $emailLabel.Content = "Email ID:"
 $emailLabel.Margin = "50,0,0,0"
 $emailTextBox = New-Object System.Windows.Controls.TextBox
-$emailTextBox.Width = 180
-$emailTextBox.Height = 22.5
+$emailTextBox.Width = $form.Width / 3
+$emailTextBox.Height = $form.Height / 9
 $emailTextBox.Margin = "0,0,25,0"
 
 # Create the team name label and text box
@@ -494,8 +512,8 @@ $teamNameLabel = New-Object System.Windows.Controls.Label
 $teamNameLabel.Content = "Team Name:"
 $teamNameLabel.Margin = "50,0,0,0"
 $teamNameTextBox = New-Object System.Windows.Controls.TextBox
-$teamNameTextBox.Width = 180
-$teamNameTextBox.Height = 22.5
+$teamNameTextBox.Width = $form.Width / 3
+$teamNameTextBox.Height = $form.Height / 9
 $teamNameTextBox.Margin = "0,0,25,0"
 
 # Create the submit button
@@ -573,6 +591,7 @@ else {
     }
     else {
         Write-Host "Operation cancelled."
+        exit
     }
 }
 
