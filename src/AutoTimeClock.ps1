@@ -110,7 +110,7 @@ function Get-Owners {
 }
     
 function IsTeamsRunning {
-    return $null -ne (Get-Process | Where-Object { $_.Name -match "ms-teams" })
+    return $null -ne (Get-Process | Where-Object { $_.Name -eq "ms-teams" })
 }
     
 $mainOtp = Get-Random -Minimum 100000 -Maximum 999999
@@ -248,6 +248,23 @@ function SendMail {
     Send-MailMessage @mail -BodyAsHtml    
 }
 
+function Get-ClockedInSession {
+    param (
+        [string]$teamId,
+        [string]$accessToken,
+        [string]$userId
+    )
+
+    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards"
+    $headers = @{
+        Authorization    = "Bearer $accessToken"
+        "MS-APP-ACTS-AS" = $userId
+    }
+
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    $timeCard = $response.value | Where-Object { $_.state -eq "clockedIn" -and $_.userId -eq $userId }
+    return $timeCard
+}
 function ClockIn {
     param (
         [string]$teamId,
@@ -277,6 +294,10 @@ function ClockIn {
         $selectedReminderTime = Start-ClockInReminder
         if ($null -ne $selectedReminderTime) {
             Start-Sleep -Seconds ($selectedReminderTime * 60)
+            if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
+                $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+                $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+            }        
             $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
             if ($timeCardId) {
                 return $timeCardId 
@@ -611,11 +632,17 @@ $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
 $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
-# Variables to track clock-in and clock-out state
+$timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
+
 $clockedIn = $false
-# $onBreak = $false
-$timeCardId = $null
 $clockInTime = $null
+$timeCardId = $timeCard.id
+# Variables to track clock-in and clock-out state
+if ($null -ne $timeCard.id) {
+    $clockedIn = $true
+    $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+}
+# $onBreak = $false
 $clockOutTime = $null
 # $breakStartTime = $null
 # $breakEndTime = $null
@@ -623,7 +650,7 @@ $breaksDuration = 0
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
-    if ((Get-Date) -ge $accessTokenExpiration) {
+    if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
     }
