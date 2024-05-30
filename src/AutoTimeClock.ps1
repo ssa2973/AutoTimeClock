@@ -160,11 +160,15 @@ function Start-ClockInReminder {
     $form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
     $form.StartPosition = "CenterScreen"
     $form.TopMost = $true  # Always on top
+    $form.AutoSize = $true
+    $form.AutoSizeMode = "GrowAndShrink"
+    $form.FormBorderStyle = "FixedSingle"
     
     # Create the reminder time label
     $reminderTimeLabel = New-Object System.Windows.Forms.Label
     $reminderTimeLabel.Text = "Remind to clock in after:"
     $reminderTimeLabel.Location = New-Object System.Drawing.Point(10, 20)
+    $reminderTimeLabel.Width = $formWidth / 4
     $form.Controls.Add($reminderTimeLabel)
         
     # Create a typable dropdown with default values
@@ -316,12 +320,7 @@ function ClockOut {
     )
 
     $result = $null
-    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/clockOut"
-    $headers = @{
-        Authorization    = "Bearer $accessToken"
-        "MS-APP-ACTS-AS" = $userId
-    }
-
+    
     if (![string]::IsNullOrEmpty($timeCardId)) {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
@@ -329,6 +328,15 @@ function ClockOut {
         $form.TopMost = $true  # Set the form to appear in the foreground
         # Loop until user clocks out or cancels repeatedly
         do {
+            if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
+                $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+                $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+            }
+            $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/clockOut"
+            $headers = @{
+                Authorization    = "Bearer $accessToken"
+                "MS-APP-ACTS-AS" = $userId
+            }
             $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)  
       
             if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
@@ -654,22 +662,23 @@ while ($null -ne $userId -and $null -ne $teamId) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
     }
-    if ($null -eq $timeCard) {
-        $timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
-        $timeCardId = $timeCard.id
-        if ($null -ne $timeCard.id) {
-            $clockedIn = $true
-            $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
-        }        
-    }
     # $userStatus = Get-TeamsStatus -accessToken $accessToken -userId $userId
     if (IsTeamsRunning) {
+        if ($null -eq $timeCard) {
+            $timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
+            $timeCardId = $timeCard.id
+            if ($null -ne $timeCard.id) {
+                $clockedIn = $true
+                $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+            }        
+        }
         if (-not $clockedIn) {
             # Attempt to clock in
             $timeCard = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
             if ($null -ne $timeCard.id) {
                 $clockedIn = $true
                 $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+                $timeCardId = $timeCard.id
                 SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
             }
         }
@@ -703,6 +712,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $activeDuration = $duration - $breaksDuration
             SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
             $timeCard = $null
+            $timeCardId = $null
         }
     }
     # Start-Sleep -Seconds 60 # Check every minute
