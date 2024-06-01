@@ -61,7 +61,9 @@ function Get-UserIdByEmail {
   
     # No user found with matching email
     Write-Host "User not found with email: $email"
-    return $null
+    [System.Windows.MessageBox]::Show("User not found with email: $email")
+    Remove-Item -Path $ConfigPath -Force
+    exit
 }
 
 function Get-TeamId {
@@ -82,8 +84,9 @@ function Get-TeamId {
         return $team.id
     }
     else {
-        Write-Host "Team '$teamName' not found."
-        return $null
+        [System.Windows.MessageBox]::Show("Team '$teamName' not found. Restart the application and enter a valid team name.")
+        Remove-Item -Path $ConfigPath -Force
+        exit
     }
 }
 
@@ -302,7 +305,9 @@ function ClockIn {
                 $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
                 $accessTokenExpiration = (Get-Date).AddSeconds(3599)
             }        
-            $timeCard = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
+            if (IsTeamsRunning) {
+                $timeCard = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
+            }
             if ($timeCard) {
                 return $timeCard
             }

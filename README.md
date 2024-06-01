@@ -1,4 +1,4 @@
-# AutoTimeClock
+# AutoTimeClock v1.0
 
 ## Introduction
 
@@ -36,7 +36,7 @@ When the application is running, it automatically prompts the user to clock in w
 
 #### Clocking Out
 
-When the application is running and Microsoft Teams is closed (process is killed), it prompts the user to clock out with yes or no options. Upon clicking yes, the user is automatically clocked out. If the user clicks no, the prompt to clock out will reappear after 10 seconds. For this functionality to work seamlessly, ensure you uncheck the "On close, keep the application running" setting in Teams.
+When the application is running and Microsoft Teams is closed (process is killed), it prompts the user to clock out with yes or no options. Upon clicking yes, the user is automatically clocked out. If the user clicks no, the prompt to clock out will reappear after 10 seconds. For this functionality to work seamlessly, ensure you uncheck the **"On close, keep the application running"** setting in Teams or close Microsoft Teams process from the Task Manager.
 
 ## Summary
 
