@@ -248,11 +248,12 @@ function Start-ClockInReminder {
     $reminderTimeLabel.Location = New-Object System.Drawing.Point(10, 20)
     $reminderTimeLabel.Width = $formWidth / 4
     $form.Controls.Add($reminderTimeLabel)
-        
+
+    $reminderTimeComboBoxLocationX = $reminderTimeLabel.Width + 10
     # Create a typable dropdown with default values
     $reminderTimeComboBox = New-Object System.Windows.Forms.ComboBox
-    $reminderTimeComboBox.Location = New-Object System.Drawing.Point(180, 15)  # Adjusted position
-    $reminderTimeComboBox.Width = 80
+    $reminderTimeComboBox.Location = New-Object System.Drawing.Point($reminderTimeComboBoxLocationX, 15)  # Adjusted position
+    $reminderTimeComboBox.Width = $formWidth / 10
     $reminderTimeComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
     $reminderTimeComboBox.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
     $reminderTimeComboBox.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
@@ -260,9 +261,10 @@ function Start-ClockInReminder {
     $reminderTimeComboBox.Text = ""  # Initial value
     $form.Controls.Add($reminderTimeComboBox)
     
+    $minutesLabelLocationX = $reminderTimeComboBoxLocationX + $reminderTimeComboBox.Width + 10
     $minutesLabel = New-Object System.Windows.Forms.Label
     $minutesLabel.Text = "minutes"
-    $minutesLabel.Location = New-Object System.Drawing.Point(265, 15)  # Adjusted position
+    $minutesLabel.Location = New-Object System.Drawing.Point($minutesLabelLocationX, 20)  # Adjusted position
     $form.Controls.Add($minutesLabel)
     
     # Create an Ok button (initially disabled)
