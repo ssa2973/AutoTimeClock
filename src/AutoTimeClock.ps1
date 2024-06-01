@@ -72,7 +72,6 @@ function Get-AuthorizationCode {
         $url = $_sender.Url.AbsoluteUri
         if ($url -match 'code=(.*)&state=12345') {
             $global:authorization_code = $matches[1]
-            Write-Host "Authorization code: $global:authorization_code"
             $form.Close()
         }
     }
@@ -492,8 +491,7 @@ function Update-PresenceSubscription {
     }
     $jsonBody = $body | ConvertTo-Json
     try {
-        $response = Invoke-RestMethod -Uri $apiUrl -Method Patch -Headers $headers -Body $jsonBody
-        return $response.id
+        Invoke-RestMethod -Uri $apiUrl -Method Patch -Headers $headers -Body $jsonBody | Out-Null
     }
     catch {
         Write-Host "Error updating subscription: $_"
