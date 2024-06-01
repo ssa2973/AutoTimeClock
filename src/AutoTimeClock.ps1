@@ -128,7 +128,9 @@ function Get-UserIdByEmail {
   
     # No user found with matching email
     Write-Host "User not found with email: $email"
-    return $null
+    [System.Windows.MessageBox]::Show("User not found with email: $email")
+    Remove-Item -Path $ConfigPath -Force
+    exit
 }
 
 function Get-TeamId {
@@ -149,8 +151,9 @@ function Get-TeamId {
         return $team.id
     }
     else {
-        Write-Host "Team '$teamName' not found."
-        return $null
+        [System.Windows.MessageBox]::Show("Team '$teamName' not found. Restart the application and enter a valid team name.")
+        Remove-Item -Path $ConfigPath -Force
+        exit
     }
 }
 
@@ -235,11 +238,15 @@ function Start-ClockInReminder {
     $form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
     $form.StartPosition = "CenterScreen"
     $form.TopMost = $true  # Always on top
+    $form.AutoSize = $true
+    $form.AutoSizeMode = "GrowAndShrink"
+    $form.FormBorderStyle = "FixedSingle"
     
     # Create the reminder time label
     $reminderTimeLabel = New-Object System.Windows.Forms.Label
     $reminderTimeLabel.Text = "Remind to clock in after:"
     $reminderTimeLabel.Location = New-Object System.Drawing.Point(10, 20)
+    $reminderTimeLabel.Width = $formWidth / 4
     $form.Controls.Add($reminderTimeLabel)
         
     # Create a typable dropdown with default values
@@ -322,6 +329,24 @@ function SendMail {
     Send-MailMessage @mail -BodyAsHtml    
 }
 
+function Get-ClockedInSession {
+    param (
+        [string]$teamId,
+        [string]$accessToken,
+        [string]$userId
+    )
+
+    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards"
+    $headers = @{
+        Authorization    = "Bearer $accessToken"
+        "MS-APP-ACTS-AS" = $userId
+    }
+
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    $timeCard = $response.value | Where-Object { $_.state -eq "clockedIn" -and $_.userId -eq $userId }
+    return $timeCard
+}
+
 function ClockIn {
     param (
         [string]$teamId,
@@ -345,15 +370,21 @@ function ClockIn {
 
     if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
         $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -ContentType "application/json"
-        return $response.id
+        return $response
     }
     else {
         $selectedReminderTime = Start-ClockInReminder
         if ($null -ne $selectedReminderTime) {
             Start-Sleep -Seconds ($selectedReminderTime * 60)
-            $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
-            if ($timeCardId) {
-                return $timeCardId 
+            if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
+                $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+                $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+            }        
+            if (IsTeamsRunning) {
+                $timeCard = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId  
+            }
+            if ($timeCard) {
+                return $timeCard
             }
         }
         return $null 
@@ -369,32 +400,36 @@ function ClockOut {
     )
 
     $result = $null
-    $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/clockOut"
-    $headers = @{
-        Authorization    = "Bearer $accessToken"
-        "MS-APP-ACTS-AS" = $userId
-    }
-
+    
     if (![string]::IsNullOrEmpty($timeCardId)) {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
         $form = New-Object System.Windows.Forms.Form
         $form.TopMost = $true  # Set the form to appear in the foreground
         # Loop until user clocks out or cancels repeatedly
-        do {
-            $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)  
+        if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
+            $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
+            $accessTokenExpiration = (Get-Date).AddSeconds(3599)
+        }
+        $apiUrl = "https://graph.microsoft.com/beta/teams/$teamId/schedule/timeCards/$timeCardId/clockOut"
+        $headers = @{
+            Authorization    = "Bearer $accessToken"
+            "MS-APP-ACTS-AS" = $userId
+        }
+        $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock Out?", "Clock Out", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)  
       
-            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-                Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
-                # Exit the loop after clocking out
-                break
-            }
-            else {
-                # Display message and wait 15 seconds before prompting again
-                Write-Host "Clock Out cancelled."
-                Start-Sleep -Seconds 10`
-            }
-        } while ($true)  # Loop continues until break is reached
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
+            return $true
+            # Exit the loop after clocking out
+            break
+        }
+        else {
+            # Display message and wait 10 seconds before prompting again
+            Write-Host "Clock Out cancelled."
+            Start-Sleep -Seconds 10
+            return $false
+        }
     }
 }
 
@@ -753,6 +788,22 @@ $userId = Get-UserIdByEmail -accessToken $accessToken -email $email
 $teamId = Get-TeamId -teamName $teamName -accessToken $accessToken -userId $userId
 $ownerMails = Get-Owners -teamId $teamId -accessToken $accessToken
 
+$timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
+
+$clockedIn = $false
+$clockInTime = $null
+$timeCardId = $timeCard.id
+# Variables to track clock-in and clock-out state
+if ($null -ne $timeCard.id) {
+    $clockedIn = $true
+    $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+}
+$onBreak = $false
+$clockOutTime = $null
+$breakStartTime = $null
+$breakEndTime = $null
+$breaksDuration = 0
+
 $presenceSubscriptionId = Get-PresenceSubscription -accessToken $delegatedToken
 
 if ($null -eq $presenceSubscriptionId) {
@@ -761,19 +812,10 @@ if ($null -eq $presenceSubscriptionId) {
 else {
     Update-PresenceSubscription -subscriptionId $presenceSubscriptionId -accessToken $delegatedToken
 }
-# Variables to track clock-in and clock-out state
-$clockedIn = $false
-$onBreak = $false
-$timeCardId = $null
-$clockInTime = $null
-$clockOutTime = $null
-$breakStartTime = $null
-$breakEndTime = $null
-$breaksDuration = 0
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
-    if ((Get-Date) -ge $accessTokenExpiration) {
+    if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
         $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
         $accessTokenExpiration = (Get-Date).AddSeconds(3599)
         $delegatedToken = Get-DelegatedAccessToken -clientId $clientId -tenantId $tenantId -redirectUri $redirectUri
@@ -781,13 +823,22 @@ while ($null -ne $userId -and $null -ne $teamId) {
     }
     $userStatus = Get-TeamsStatus -userId $userId
     if (IsTeamsRunning) {
+        if ($null -eq $timeCard) {
+            $timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
+            $timeCardId = $timeCard.id
+            if ($null -ne $timeCard.id) {
+                $clockedIn = $true
+                $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+            }        
+        }
         if (-not $clockedIn) {
             # Attempt to clock in
-            $timeCardId = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
-            if ($null -ne $timeCardId) {
+            $timeCard = ClockIn -teamId $teamId -accessToken $accessToken -userId $userId
+            if ($null -ne $timeCard.id) {
                 $clockedIn = $true
-                SendMail -userId $userId -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
-                $clockInTime = Get-Date
+                $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
+                $timeCardId = $timeCard.id
+                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
             }
         }
         
@@ -813,12 +864,17 @@ while ($null -ne $userId -and $null -ne $teamId) {
     else {
         if ($clockedIn) {
             # Attempt to clock out
-            ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
-            $clockedIn = $false
-            $clockOutTime = Get-Date
-            $duration = $clockOutTime - $clockInTime
-            $activeDuration = $duration - $breaksDuration
-            SendMail -userId $userId -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
+            $result = ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+            if ($result[-1]) {
+                $clockedIn = $false
+                $clockOutTime = Get-Date
+                $duration = $clockOutTime - $clockInTime
+                $activeDuration = $duration - $breaksDuration
+                SendMail -userId $userId -accessToken $accessToken -subject "Clock out update" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
+                $timeCard = $null
+                $timeCardId = $null
+            }
+            $result = $null
         }
     }
     # Start-Sleep -Seconds 60 # Check every minute
