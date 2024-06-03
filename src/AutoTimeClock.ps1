@@ -55,6 +55,10 @@ function Get-AuthorizationCode {
     # Create a form with a web browser control
     $form = New-Object -TypeName System.Windows.Forms.Form
     $form.Size = New-Object -TypeName System.Drawing.Size(800, 600)
+    $form.StartPosition = "CenterScreen"
+    $form.Text = "Sign in to your Microsoft account"
+    $form.TopMost = $true
+    $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("src/logo.ico")
     $webBrowser = New-Object -TypeName System.Windows.Forms.WebBrowser
     $webBrowser.Dock = [System.Windows.Forms.DockStyle]::Fill
     $form.Controls.Add($webBrowser)
@@ -237,6 +241,7 @@ function Start-ClockInReminder {
     $form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
     $form.StartPosition = "CenterScreen"
     $form.TopMost = $true  # Always on top
+    $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("src/logo.ico")
     $form.AutoSize = $true
     $form.AutoSizeMode = "GrowAndShrink"
     $form.FormBorderStyle = "FixedSingle"
@@ -365,6 +370,7 @@ function ClockIn {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
         $form = New-Object System.Windows.Forms.Form
+        $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("src/logo.ico")
         $form.TopMost = $true  # Set the form to appear in the foreground
         $result = [System.Windows.Forms.MessageBox]::Show($form, "It's " + (Get-Date -Format "HH:mm") + " right now. Do you want to Clock In?", "Clock In", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)    
     }
@@ -406,6 +412,7 @@ function ClockOut {
         # Prompt the user with a MessageBox
         Add-Type -AssemblyName System.Windows.Forms
         $form = New-Object System.Windows.Forms.Form
+        $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("src/logo.ico")
         $form.TopMost = $true  # Set the form to appear in the foreground
         # Loop until user clocks out or cancels repeatedly
         if ((Get-Date) -ge $accessTokenExpiration -or $null -eq $accessToken) {
@@ -538,6 +545,7 @@ function VerifyOtp {
     )
     # Prompt for OTP verification
     $otpForm = New-Object System.Windows.Window
+    $otpForm.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create("src/logo.ico")
     $otpForm.Title = "OTP Verification"
     $otpForm.Width = 300
     $otpForm.Height = 150
@@ -621,6 +629,7 @@ if ($process.Count -gt 1) {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Error"
     $form.Size = New-Object System.Drawing.Size(300, 200)
+    $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("src/logo.ico")
     $form.StartPosition = 'CenterScreen'
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10, 20)
@@ -647,6 +656,7 @@ $form.Title = "Enter Details"
 $form.Width = ($screenWidth * $formWidthPercentage).ToString("0")  # Round to nearest integer
 $form.Height = ($screenHeight * $formHeightPercentage).ToString("0")
 $form.WindowStartupLocation = "CenterScreen"
+$form.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create("src/logo.ico")
 $form.Topmost = $true
 
 # Create a grid to hold the controls
