@@ -183,6 +183,20 @@ function Start-ClockInReminder {
     $reminderTimeComboBox.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
     $reminderTimeComboBox.Items.AddRange(@("10", "15", "30"))  # Default values
     $reminderTimeComboBox.Text = ""  # Initial value
+    $reminderTimeComboBox.MaxLength = 3  # Limit input to 3 characters
+    # Add the KeyPress event handler to restrict input to numbers only
+    $reminderTimeComboBox.Add_KeyPress({
+            param (
+                [object] $_sender,
+                [System.Windows.Forms.KeyPressEventArgs] $e
+            )
+    
+            # Check if the key pressed is not a digit or a control key (like backspace)
+            if (-not [char]::IsDigit($e.KeyChar) -and -not [char]::IsControl($e.KeyChar)) {
+                $e.Handled = $true  # Prevent the character from being entered into the control
+            }
+        })
+
     $form.Controls.Add($reminderTimeComboBox)
     
     $minutesLabel = New-Object System.Windows.Forms.Label
