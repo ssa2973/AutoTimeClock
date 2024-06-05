@@ -928,6 +928,14 @@ while ($null -ne $userId -and $null -ne $teamId) {
     }
     else {
         if ($clockedIn) {
+            if ($onBreak) {
+                EndBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
+                $onBreak = $false
+                $breakEndTime = Get-Date
+                $duration = $breakEndTime - $breakStartTime
+                $breaksDuration += $duration
+                SendMail -userId $userId -subject "Break update" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+            }
             # Attempt to clock out
             $result = ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
             if ($result[-1]) {

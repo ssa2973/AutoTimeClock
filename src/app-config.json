@@ -3,5 +3,5 @@
    "clientSecret": "M7d8Q~TbsfI.wcIdBEujpp4XskZ0wHNRqlu7RaIj",
    "tenantId": "8e8a9805-15bc-44e4-9fd5-8bf2cd01fe09",
    "redirectUri": "https://login.microsoftonline.com/common/oauth2/nativeclient",
-   "webhookUrl": "https://10ab-2401-4900-1c0f-5797-2d17-8245-858a-7659.ngrok-free.app"
+   "webhookUrl": "https://dbd5-2401-4900-1c0f-5797-2d17-8245-858a-7659.ngrok-free.app"
 }
