@@ -209,25 +209,17 @@ function Send-Otp {
 
 function Get-TeamsStatus {
     param (
-        [string]$userId
+        [string]$userId,
+        [string]$accessToken
     )
 
-    $apiUrl = "$webhookUrl/events"
+    $apiUrl = "https://graph.microsoft.com/beta/communications/presences/$userId"
     $headers = @{
-        "ngrok-skip-browser-warning" = "true"
-    }
-    
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -UserAgent "MyApp/0.0.1" -UseBasicParsing
-
-    # Iterate through the JSON response in reverse to find the latest entry
-    for ($i = $response.Length - 1; $i -ge 0; $i--) {
-        $item = $response[$i]
-        if ($item.id -eq $userId) {
-            return $item.availability
-        }
+        Authorization = "Bearer $accessToken"
     }
 
-    return $null  # Return null if no matching userId is found
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    return $response.availability
 }
             
 function Start-ClockInReminder {
@@ -363,7 +355,7 @@ function Get-ClockedInSession {
     }
 
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
-    $timeCard = $response.value | Where-Object { $_.state -eq "clockedIn" -and $_.userId -eq $userId }
+    $timeCard = $response.value | Where-Object { $_.state -ne "clockedOut" -and $_.userId -eq $userId }
     return $timeCard
 }
 
@@ -803,6 +795,41 @@ $tenantId = $config.tenantId
 $redirectUri = $config.redirectUri
 $webhookUrl = $config.webhookUrl
 
+# Define the WebSocket URL
+$webSocketUrl = $webhookUrl.Replace("http", "ws")
+# $webSocketUrl = "ws://localhost:3000"
+
+# Create a ClientWebSocket instance
+$webSocket = New-Object System.Net.WebSockets.ClientWebSocket
+# Function to receive WebSocket messages
+function Receive-WebSocketMessage {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.Net.WebSockets.ClientWebSocket]$socket,
+        [Parameter(Mandatory = $true)]
+        [string]$userId
+    )
+    $buffer = New-Object byte[] 4096
+    $segment = [System.ArraySegment[byte]]::new($buffer)
+    
+    $result = $webSocket.ReceiveAsync($segment, [System.Threading.CancellationToken]::None).Result
+
+    if ($result.CloseStatus -ne [System.Nullable[System.Net.WebSockets.WebSocketCloseStatus]]::null) {
+        Write-Host "WebSocket closed with status: $($result.CloseStatus)"
+    }
+
+    $message = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $result.Count)
+    if ($message -ne "" -and $null -ne $message) {
+        Write-Host "Received message: $message"
+    }
+    $jsonObject = $message | ConvertFrom-Json
+    $id = $jsonObject.id
+    if ($id -eq $userId) {
+        $userStatus = $jsonObject[-1].availability
+    }
+    return $userStatus
+}
+
 # Get access token
 $accessTokenExpiration = (Get-Date).AddSeconds(3599)
 $accessToken = Get-AccessToken -clientId $clientId -tenantId $tenantId -clientSecret $clientSecret
@@ -836,6 +863,7 @@ if ($null -eq $presenceSubscriptionId) {
 else {
     Update-PresenceSubscription -subscriptionId $presenceSubscriptionId -accessToken $delegatedToken
 }
+$userStatus = Get-TeamsStatus -userId $userId -accessToken $accessToken
 
 # Main loop to monitor Teams state
 while ($null -ne $userId -and $null -ne $teamId) {
@@ -845,8 +873,17 @@ while ($null -ne $userId -and $null -ne $teamId) {
         $delegatedToken = Get-DelegatedAccessToken -clientId $clientId -tenantId $tenantId -redirectUri $redirectUri
         Update-PresenceSubscription -subscriptionId $presenceSubscriptionId -accessToken $delegatedToken
     }
-    $userStatus = Get-TeamsStatus -userId $userId
+    # $userStatus = Get-TeamsStatus -userId $userId
     if (IsTeamsRunning) {
+        try {
+            $webSocket.ConnectAsync([System.Uri]$webSocketUrl, [System.Threading.CancellationToken]::None).Wait()
+        }
+        catch {
+            if ($_.Exception.InnerException.Message -eq "The WebSocket has already been started.") {
+                Write-Host "WebSocket already connected."
+            }
+        }
+        $userStatus = Receive-WebSocketMessage -socket $webSocket -userId $userId
         if ($null -eq $timeCard) {
             $timeCard = Get-ClockedInSession -teamId $teamId -accessToken $accessToken -userId $userId
             $timeCardId = $timeCard.id
@@ -866,7 +903,11 @@ while ($null -ne $userId -and $null -ne $teamId) {
             }
         }
         
-        if ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
+        if ($null -eq $userStatus) {
+            continue
+        }
+        
+        elseif ($userStatus -eq "Away" -or $userStatus -eq "BeRightBack") {
             # Start break if user is Away or BeRightBack and not already on a break
             if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
@@ -899,6 +940,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
                 $timeCardId = $null
             }
             $result = $null
+            $webSocket.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "Closing connection", [System.Threading.CancellationToken]::None).Wait()
         }
     }
     # Start-Sleep -Seconds 60 # Check every minute
