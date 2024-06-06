@@ -23,8 +23,8 @@ wss.on("connection", (ws) => {
    console.log("Client connected via WebSocket");
    clients.push(ws);
 
-   // Send the totalEvents array to the newly connected client
-   ws.send(JSON.stringify(totalEvents));
+   // Send the last 5 events from totalEvents array to the newly connected client
+   ws.send(JSON.stringify(totalEvents.slice(-5)));
 
    ws.on("close", () => {
       console.log("Client disconnected");
@@ -76,7 +76,7 @@ const processEvents = async (events) => {
 // Function to send heartbeat messages with totalEvents
 const heartbeat = () => {
    if (clients.length > 0) {
-      console.log("Sending heartbeat with totalEvents");
+      console.log("Sending heartbeat with latestEvent to all clients");
       broadcast(totalEvents[totalEvents.length - 1]);
    }
 };
