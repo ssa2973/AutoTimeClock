@@ -341,6 +341,55 @@ function SendMail {
     Send-MailMessage @mail -BodyAsHtml    
 }
 
+function Send-MailAsUser {
+    param(
+        [string]$userId,
+        [string]$accessToken,
+        [string]$subject,
+        [string]$message,
+        [string[]]$toRecipients,
+        [string[]]$ccRecipients
+    )
+  
+    $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/sendMail"
+    $headers = @{
+        Authorization  = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+  
+    $emailBody = @{
+        message =
+        @{
+            subject      = $subject
+            body         = @{
+                contentType = "Text"
+                content     = $message
+            }
+            toRecipients = @(
+                foreach ($recipient in $toRecipients) {
+                    @{
+                        emailAddress = @{
+                            address = $recipient
+                        }
+                    }
+                }
+            )
+            ccRecipients = @(
+                foreach ($recipient in $ccRecipients) {
+                    @{
+                        emailAddress = @{
+                            address = $recipient
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    $bodyJson = $emailBody | ConvertTo-Json -Depth 4
+    Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $bodyJson
+}
+
 function Get-ClockedInSession {
     param (
         [string]$teamId,
@@ -899,7 +948,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
                 $clockedIn = $true
                 $clockInTime = [dateTime]$timeCard.clockInEvent.dateTime
                 $timeCardId = $timeCard.id
-                SendMail -userId $userId -accessToken $accessToken -subject "Clock in update for $email" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
+                Send-MailAsUser -userId $userId -accessToken $accessToken -subject "Clock in update for $email" -message "User $email has successfully clocked in at $(Get-Date) in $teamName" -toRecipients $ownerMails -ccRecipients $email
             }
         }
         
@@ -912,7 +961,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             if (-not $onBreak -and $clockedIn) {
                 StartBreak -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
                 $onBreak = $true
-                SendMail -userId $userId -subject "Break update for $email" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email
+                Send-MailAsUser -userId $userId -subject "Break update for $email" -message "User $email has started a break at $(Get-Date)" -toRecipients $ownerMails -ccRecipients $email -accessToken $accessToken
                 $breakStartTime = Get-Date
             }
         }
@@ -923,7 +972,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
             $breakEndTime = Get-Date
             $duration = $breakEndTime - $breakStartTime
             $breaksDuration += $duration
-            SendMail -userId $userId -subject "Break update $email" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+            Send-MailAsUser -userId $userId -subject "Break update for $email" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email -accessToken $accessToken
         }
     }
     else {
@@ -934,7 +983,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
                 $breakEndTime = Get-Date
                 $duration = $breakEndTime - $breakStartTime
                 $breaksDuration += $duration
-                SendMail -userId $userId -subject "Break update for $email" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email
+                Send-MailAsUser -userId $userId -subject "Break update for $email" -message "User $email has ended a break at $(Get-Date). Break duration - $duration" -toRecipients $ownerMails -ccRecipients $email -accessToken $accessToken
             }
             # Attempt to clock out
             $result = ClockOut -teamId $teamId -timeCardId $timeCardId -accessToken $accessToken -userId $userId
@@ -943,7 +992,7 @@ while ($null -ne $userId -and $null -ne $teamId) {
                 $clockOutTime = Get-Date
                 $duration = $clockOutTime - $clockInTime
                 $activeDuration = $duration - $breaksDuration
-                SendMail -userId $userId -accessToken $accessToken -subject "Clock out update for $email" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email
+                Send-MailAsUser -userId $userId -subject "Clock out update for $email" -message "User $email has successfully clocked out at $(Get-Date) in $teamName. Total duration - $duration, Active duration - $activeDuration" -toRecipients $ownerMails -ccRecipients $email -accessToken $accessToken
                 $timeCard = $null
                 $timeCardId = $null
             }

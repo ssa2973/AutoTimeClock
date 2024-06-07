@@ -67,7 +67,7 @@ const processEvents = async (events) => {
                "for",
                latestEvent.id
             );
-            broadcast(totalEvents[totalEvents.length - 1]); // Broadcast the last object from totalEvents array
+            broadcast(totalEvents.slice(-5)); // Broadcast the last 5 events from totalEvents array
          }
       })
    );
@@ -76,8 +76,8 @@ const processEvents = async (events) => {
 // Function to send heartbeat messages with totalEvents
 const heartbeat = () => {
    if (clients.length > 0) {
-      console.log("Sending heartbeat with latestEvent to all clients");
-      broadcast(totalEvents[totalEvents.length - 1]);
+      console.log("Sending heartbeat with latestEvents to all clients");
+      broadcast(totalEvents.slice(-5)); // Broadcast the last 5 events from totalEvents array
    }
 };
 
