@@ -925,11 +925,14 @@ while ($null -ne $userId -and $null -ne $teamId) {
     # $userStatus = Get-TeamsStatus -userId $userId
     if (IsTeamsRunning) {
         try {
-            $webSocket.ConnectAsync([System.Uri]$webSocketUrl, [System.Threading.CancellationToken]::None).Wait()
-        }
-        catch {
+            if ($webSocket.State -ne [System.Net.WebSockets.WebSocketState]::Open) {
+                $webSocket.ConnectAsync([System.Uri]$webSocketUrl, [System.Threading.CancellationToken]::None).Wait()
+            }
+        } catch {
             if ($_.Exception.InnerException.Message -eq "The WebSocket has already been started.") {
                 Write-Host "WebSocket already connected."
+            } else {
+                Write-Host "WebSocket connection error: $_"
             }
         }
         $userStatus = Receive-WebSocketMessage -socket $webSocket -userId $userId
